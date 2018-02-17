@@ -4,9 +4,10 @@ CREATE TABLE public.nanaimo_routing AS (
 
 	SELECT
 		oc.classname,
+		l.id,
 		l.gmlid,
-		l.start_node_id AS source,
-		l.end_node_id AS target,
+		l.start_node_id,
+		l.end_node_id,
 		1 AS cost,
 		1 AS reverse_cost,
 		l.line_geom AS geom

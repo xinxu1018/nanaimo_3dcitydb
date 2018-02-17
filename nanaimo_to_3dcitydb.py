@@ -5,7 +5,12 @@ from psycopg2 import sql
 #TODO collapse import_RoundPipes and import_TerminalElements into single generic function
 def import_RoundPipes(citygml, cur):
 
+    count=0
     for pipe in citygml.findall(".//utility:RoundPipe", ns): # the .// is required if you want to search all children, not just direct children https://stackoverflow.com/questions/9112121/elementtree-findall-returning-empty-list
+
+        if count % 250 == 0:
+            print("roundpipe #{0}".format(count))
+        count += 1
 
         pipe_sql_dict = {
             'gmlid': 'NULL',
@@ -18,6 +23,7 @@ def import_RoundPipes(citygml, cur):
             'geom': 'NULL',
             'functionOfLine': 'NULL',
             'exteriorDiameter': 'NULL',
+            'exteriorDiameterUnit': 'NULL',
         }
 
         featuregraph_sql_dict = {
@@ -34,6 +40,7 @@ def import_RoundPipes(citygml, cur):
         for pipe_child in list(pipe):
 
             if pipe_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry":
+
                 pipe_lod1Geometry = list(pipe_child)[0]
                 pipe_lineString = list(pipe_lod1Geometry)[0]
                 pipe_points = pipe_lineString.text.split(" ")
@@ -45,6 +52,12 @@ def import_RoundPipes(citygml, cur):
                     i += 3
                 pipe_geom = pipe_geom[:-1] + ")"
                 pipe_sql_dict['geom'] = pipe_geom
+
+            elif pipe_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry":
+
+                pipe_exteriorDiameter = pipe_child
+                pipe_exteriorDiameterUnit = pipe_exteriorDiameter.attrib["uom"]
+                pipe_sql_dict['exteriorDiameterUnit'] = pipe_exteriorDiameterUnit
 
             # ==========================================================================================================
             # GET FEATUREGRAPH INFO
@@ -198,7 +211,8 @@ def import_RoundPipes(citygml, cur):
                 elevation_quality := %(elevationQuality)s,
                 geom := ST_GeomFromText(%(geom)s,26910),
                 function_of_line := %(functionOfLine)s,
-                ext_diameter := %(exteriorDiameter)s
+                ext_diameter := %(exteriorDiameter)s,
+                ext_diameter_unit := %(exteriorDiameterUnit)s
             );
 
         """)
@@ -293,8 +307,13 @@ def import_RoundPipes(citygml, cur):
 
 
 def import_TerminalElements(citygml, cur):
-    
+
+    count=0
     for terminalelement in citygml.findall(".//utility:TerminalElement", ns):
+
+        if count % 250 == 0:
+            print("terminalelement #{0}".format(count))
+        count += 1
         
         terminalelement_sql_dict = {
             'gmlid': 'NULL',
@@ -303,6 +322,7 @@ def import_TerminalElements(citygml, cur):
             'elevationQuality': 'NULL',
             'geom': 'NULL',
             'class': 'NULL',
+            'connectedCityObject': 'NULL',
         }
 
         featuregraph_sql_dict = {
@@ -411,6 +431,7 @@ def import_TerminalElements(citygml, cur):
         # IMPORT TERMINALELEMENT
         # ==============================================================================================================
 
+        # TODO: once buildings are added, need to get their id via the connectedCityObject property gml id
         insert_terminalelement_sql = sql.SQL("""
 
             SELECT citydb_view.utn9_insert_ntw_feat_term_elem(
@@ -418,6 +439,7 @@ def import_TerminalElements(citygml, cur):
                 status := %(status)s,
                 location_quality := %(locationQuality)s,
                 elevation_quality := %(elevationQuality)s,
+                /*cityobject_id := %(connectedCityObject)s,*/
                 geom := ST_GeomFromText(%(geom)s,26910)
             );
 
@@ -471,7 +493,12 @@ def import_TerminalElements(citygml, cur):
 
 def import_InterFeatureLinks(citygml, cur):
 
+    count = 0
     for interfeaturelink in citygml.findall(".//utility:InterFeatureLink", ns):
+
+        if count % 250 == 0:
+            print("interfeaturelink #{0}".format(count))
+        count += 1
 
         interfeaturelink_sql_dict = {
             "gmlid": "NULL",
@@ -555,11 +582,8 @@ def import_InterFeatureLinks(citygml, cur):
         if interfeaturelink_sql_dict["geom"] == "NULL":
             interfeaturelink_sql_dict["geom"] = None
 
-        print(cur.mogrify(insert_interfeaturelink_sql, interfeaturelink_sql_dict))
+        #print(cur.mogrify(insert_interfeaturelink_sql, interfeaturelink_sql_dict))
         cur.execute(insert_interfeaturelink_sql, interfeaturelink_sql_dict)
-        #TODO need to have terminalelements in here before we add the interfeature links because some of them connect the pipes to the terminalelements
-
-
 
 
 if __name__ == "__main__":
@@ -572,8 +596,11 @@ if __name__ == "__main__":
 
     tree = ET.parse('data/nanaimo_water_pipes.gml')
 
-    #import_RoundPipes(tree, cur)
-    #import_TerminalElements(tree, cur)
+    import_RoundPipes(tree, cur)
+    print("done roundpipes")
+    import_TerminalElements(tree, cur)
+    print("done terminalelements")
     import_InterFeatureLinks(tree, cur)
+    print("done interfeaturelinks")
 
-    conn.commit()
+    #conn.commit()

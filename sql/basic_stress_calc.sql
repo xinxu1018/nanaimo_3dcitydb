@@ -15,7 +15,7 @@ CREATE TABLE public.nanaimo_stress_result AS (
 				reverse_cost
 			FROM
 				public.nanaimo_routing',
-			199,
+			103312,
 			(SELECT
 				array_agg(n.id) AS id
 				-- te.gmlid AS terminalelement_gmlid,

@@ -1,3 +1,12 @@
+### NOTES
+### The features need to loop BACK through their feature graphs in the network graph and update the FG's "ntw_feature_id" property
+###
+###
+
+ALLOWED_RELATIONS = ["{http://www.citygml.org/ade/utility/0.9.2}component",
+                     "{http://www.citygml.org/ade/utility/0.9.2}topoGraph",
+                     "{http://www.citygml.org/ade/utility/0.9.2}featureGraphMember",]
+
 import xml.etree.ElementTree as ET
 import psycopg2
 from psycopg2 import sql
@@ -7,14 +16,21 @@ ns = {'utility': "http://www.citygml.org/ade/utility/0.9.2",
 
 properties = {
     "Network": ["class", "function", "usage", ],
+    "NetworkGraph": [],
+    "FeatureGraph": [],
     "RoundPipe": ["function", "usage", "connectedCityObject", "yearOfConstruction", "status", "locationQuality",
                   "elevationQuality", "class", "functionOfLine", "isGravity", "exteriorWidth", "exteriorHeight",
-                  "exteriorDiameter", "interiorDiameter", ]
+                  "exteriorDiameter", "interiorDiameter", ],
+    "TerminalElement": ["function", "usage", "connectedCityObject", "yearOfConstruction", "status", "locationQuality",
+                        "elevationQuality", "class", ],
 }
 
 relations = {
     "Network": ["component", "topoGraph", ],
+    "NetworkGraph": ["featureGraphMember", "linkMember", ],
+    "FeatureGraph": ["linkMember", "networkLinkMember", "nodeMember", ],
     "RoundPipe": ["lod1Geometry", "consistsOf", "hasMaterial", "topoGraph", ],
+    "TerminalElement": ["lod1Geometry", ]
 }
 
 queries = {
@@ -41,6 +57,31 @@ queries = {
             function := %(function)s,
             usage := %(usage)s,
             commodity_id := %(commodity_id)s,
+            schema_name := %(schema_name)s
+        );
+    """),
+    "NetworkGraph": sql.SQL("""
+        SELECT citydb_view.utn9_insert_network_graph(
+            id := %(id)s,
+            gmlid := %(gmlid)s,
+            gmlid_codespace := %(gmlid_codespace)s,
+            name := %(name)s,
+            name_codespace := %(name_codespace)s,
+            description := %(description)s,
+            network_id := %(network_id)s,
+            schema_name := %(schema_name)s
+        );
+    """),
+    "FeatureGraph": sql.SQL("""
+        SELECT citydb_view.utn9_insert_feature_graph(
+            id := %(id)s,
+            gmlid := %(gmlid)s,
+            gmlid_codespace := %(gmlid_codespace)s,
+            name := %(name)s,
+            name_codespace := %(name_codespace)s,
+            description := %(description)s,
+            ntw_feature_id := %(ntw_feature_id)s,
+            ntw_graph_id := %(ntw_graph_id)s,
             schema_name := %(schema_name)s
         );
     """),
@@ -86,14 +127,76 @@ queries = {
                 int_diameter_unit := %(int_diameter_unit)s,
                 schema_name := 'citydb'
             ) AS fid
+        ),
+        
+        x AS (
+            SELECT citydb_pkg.utn9_insert_network_to_network_feature(
+                network_id := %(network_id)s,
+                network_feature_id := rp.fid,
+                schema_name := 'citydb'
+            ) FROM rp
         )
         
-        SELECT citydb_pkg.utn9_insert_network_to_network_feature(
-            network_id := %(network_id)s,
-            network_feature_id := rp.fid,
-            schema_name := 'citydb'
-        ) FROM rp;
+        UPDATE
+            citydb.utn9_feature_graph
+        SET
+            ntw_feature_id = (SELECT rp.fid FROM rp)
+        WHERE
+            id = %(featuregraph_id)s
+        RETURNING
+            (SELECT rp.fid FROM rp);
     """),
+    "TerminalElement": sql.SQL("""
+        WITH te AS (
+            SELECT citydb_view.utn9_insert_ntw_feat_term_elem(
+                id := %(id)s,
+                gmlid := %(gmlid)s,
+                gmlid_codespace := %(gmlid_codespace)s,
+                name := %(name)s,
+                name_codespace := %(name_codespace)s,
+                description := %(description)s,
+                envelope := ST_Expand(ST_GeomFromText(%(geom)s, %(srid)s), 0),
+                creation_date := %(creation_date)s,
+                termination_date := %(termination_date)s,
+                relative_to_terrain := %(relative_to_terrain)s,
+                relative_to_water := %(relative_to_water)s,
+                last_modification_date := %(last_modification_date)s,
+                updating_person := %(updating_person)s,
+                reason_for_update := %(reason_for_update)s,
+                lineage := %(lineage)s,
+                ntw_feature_parent_id := %(ntw_feature_parent_id)s,
+                ntw_feature_root_id := %(ntw_feature_root_id)s,
+                class := %(class)s,
+                function := %(function)s,
+                usage := %(usage)s,
+                year_of_construction := %(yearOfConstruction)s,
+                status := %(status)s,
+                location_quality := %(locationQuality)s,
+                elevation_quality := %(elevationQuality)s,
+                cityobject_id := %(cityobject_id)s,
+                prot_element_id := %(prot_element_id)s,
+                geom := ST_GeomFromText(%(geom)s, %(srid)s),
+                schema_name := 'citydb'
+            ) AS fid
+        ),
+        
+        x AS (
+            SELECT citydb_pkg.utn9_insert_network_to_network_feature(
+                network_id := %(network_id)s,
+                network_feature_id := te.fid,
+                schema_name := 'citydb'
+            ) FROM te
+        )
+        
+        UPDATE
+            citydb.utn9_feature_graph
+        SET
+            ntw_feature_id = (SELECT te.fid FROM te)
+        WHERE
+            id = %(featuregraph_id)s
+        RETURNING
+            (SELECT te.fid FROM te);
+    """)
 }
 
 exec_dicts = {
@@ -121,6 +224,27 @@ exec_dicts = {
         "commodity_id": None,
         "schema_name": "citydb",
     },
+    "NetworkGraph": {
+        "id": None,
+        "gmlid": None,
+        "gmlid_codespace": None,
+        "name": None,
+        "name_codespace": None,
+        "description": None,
+        "network_id": None,
+        "schema_name": 'citydb'
+    },
+    "FeatureGraph": {
+        "id": None,
+        "gmlid": None,
+        "gmlid_codespace": None,
+        "name": None,
+        "name_codespace": None,
+        "description": None,
+        "ntw_feature_id": None,
+        "ntw_graph_id": None,
+        "schema_name": "citydb"
+    },
     "RoundPipe": {
         "id": None,
         "gmlid": None,
@@ -142,7 +266,7 @@ exec_dicts = {
         "class": None,
         "function": None,
         "usage": None,
-        "year_of_construction": None,
+        "yearOfConstruction": None,
         "status": None,
         "locationQuality": None,
         "elevationQuality": None,
@@ -163,24 +287,57 @@ exec_dicts = {
         "srid": None,
         "network_id": None,
     },
-    "NetworkGraph": {
+    "TerminalElement": {
         "id": None,
         "gmlid": None,
         "gmlid_codespace": None,
         "name": None,
         "name_codespace": None,
         "description": None,
+        "envelope": None,
+        "creation_date": None,
+        "termination_date": None,
+        "relative_to_terrain": None,
+        "relative_to_water": None,
+        "last_modification_date": None,
+        "updating_person": None,
+        "reason_for_update": None,
+        "lineage": None,
+        "ntw_feature_parent_id": None,
+        "ntw_feature_root_id": None,
+        "class": None,
+        "function": None,
+        "usage": None,
+        "yearOfConstruction": None,
+        "status": None,
+        "locationQuality": None,
+        "elevationQuality": None,
+        "cityobject_id": None,
+        "prot_element_id": None,
+        "geometry": None,
+        "schema_name": "citydb",
+        "srid": None,
         "network_id": None,
-        "schema_name": 'citydb'
     },
 }
 
 last_id_inserted = {
     "Network": 0,
+    "NetworkGraph": 0,
+    "FeatureGraph": 0,
     "RoundPipe": 0,
+    "TerminalElement": 0,
 }
 
-def import_feature(xml_element, network_id, cur, ntw_to_ntwfeat=None):
+superordinate_ids = {
+    "Network": None,
+    "NetworkGraph": "network_id",
+    "FeatureGraph": "ntw_graph_id",
+    "RoundPipe": "network_id",
+    "TerminalElement": "network_id",
+}
+
+def import_feature(xml_element, last_feature_type_inserted, superordinate_id, cur):
 
     # get the feature type from the tag and its associated SQL execution dictionary
     feature_type = xml_element.tag[xml_element.tag.find("}")+1:]
@@ -189,8 +346,8 @@ def import_feature(xml_element, network_id, cur, ntw_to_ntwfeat=None):
     # set the GML id
     exec_dict["gmlid"] = xml_element.attrib['{http://www.opengis.net/gml}id']
 
-    # set the network id (important in case this is a network feature)
-    exec_dict["network_id"] = network_id
+    # set the superordinate feature id
+    exec_dict[superordinate_ids[feature_type]] = superordinate_id
 
     # loop through all top-level children in the element, looking for properties
     for child_element in list(xml_element):
@@ -207,6 +364,16 @@ def import_feature(xml_element, network_id, cur, ntw_to_ntwfeat=None):
         exec_dict["geom"] = geom_epsg[0]
         exec_dict["srid"] = int(geom_epsg[1])
 
+    # find the topograph relation if it is a roundpipe or terminalelement so that we can get the associated featuregraph
+    for child_element in [child_element for child_element in list(xml_element) if child_element.tag == "{http://www.citygml.org/ade/utility/0.9.2}topoGraph" and (feature_type == "RoundPipe" or feature_type == "TerminalElement")]:
+        if child_element.attrib["{http://www.w3.org/1999/xlink}href"] is not None:
+            if child_element.attrib["{http://www.w3.org/1999/xlink}href"][0] == "#":
+                xlinked_gmlid = child_element.attrib["{http://www.w3.org/1999/xlink}href"][1:]
+            else:
+                xlinked_gmlid = child_element.attrib["{http://www.w3.org/1999/xlink}href"]
+        featuregraph_id = get_xlink(xlinked_gmlid, cur)
+        exec_dict["featuregraph_id"] = featuregraph_id
+
     # for key in exec_dict:
     #     if exec_dict[key] is not None:
     #         print("{0}: {1}".format(key, exec_dict[key]))
@@ -217,6 +384,7 @@ def import_feature(xml_element, network_id, cur, ntw_to_ntwfeat=None):
     print(cur.mogrify(query, exec_dict))
     cur.execute(query, exec_dict)
     last_id_inserted[feature_type] = cur.fetchone()[0]
+    print("LAST ID INSERTED {0}".format(last_id_inserted[feature_type]))
 
     # loop through all top-level children in the element, looking for relations, but excluding the geometry relation
     for child_element in list(xml_element):
@@ -225,24 +393,32 @@ def import_feature(xml_element, network_id, cur, ntw_to_ntwfeat=None):
         # TODO: is this list comprehension stupid?
         for relation in [relation for relation in relations[feature_type] if child_element.tag == "{{http://www.citygml.org/ade/utility/0.9.2}}{0}".format(relation) or child_element.tag == "{{http://www.opengis.net/gml}}{0}".format(relation)]:
 
-            # check for href
-            # if "{http://www.w3.org/1999/xlink}href" in child_element.attrib:
-            #
-            #     # get the gml id.  it is supposed to be convention to prepend the gml id of an xlink with a "#"
-            #     # character, but it is not strictly enforced, so we need to handle both cases.
-            #     if child_element.attrib["{http://www.w3.org/1999/xlink}href"] is not None:
-            #         if child_element.attrib["{http://www.w3.org/1999/xlink}href"][0] == "#":
-            #             relation = child_element.attrib["{http://www.w3.org/1999/xlink}href"][1:]
-            #         else:
-            #             relation = child_element.attrib["{http://www.w3.org/1999/xlink}href"]
-            #     print(get_xlink())
+            if child_element.tag in ALLOWED_RELATIONS:  # TODO: remove temporary allowed relations list
 
-            print(child_element.tag)
-            if child_element.tag == "{http://www.citygml.org/ade/utility/0.9.2}component":
+                # check for href
+                if "{http://www.w3.org/1999/xlink}href" in child_element.attrib:
+                    pass
 
-                # recursively call the same function on this element's direct child.
-                #print("RELATION: {0}".format(relation))
-                import_feature(list(child_element)[0], last_id_inserted["Network"], cur)
+                    # # get the gml id.  it is supposed to be convention to prepend the gml id of an xlink with a "#"
+                    # # character, but it is not strictly enforced, so we need to handle both cases.
+                    # if child_element.attrib["{http://www.w3.org/1999/xlink}href"] is not None:
+                    #     if child_element.attrib["{http://www.w3.org/1999/xlink}href"][0] == "#":
+                    #         xlinked_gmlid = child_element.attrib["{http://www.w3.org/1999/xlink}href"][1:]
+                    #     else:
+                    #         xlinked_gmlid = child_element.attrib["{http://www.w3.org/1999/xlink}href"]
+                    # featuregraph_id = get_xlink(xlinked_gmlid, cur)
+                    #
+                    # # This is a RoundPipe's topoGraph relation - we have to update the FeatureGraph table!
+                    # if feature_type == "RoundPipe" and relation == "topoGraph":
+                    #     print("FEATURE TYPE: {0}".format(feature_type))
+                    #     print("LAST INSERTS: {0}".format(last_id_inserted))
+                    #     link_network_feature_to_featuregraph(last_id_inserted[feature_type], featuregraph_id, cur)
+
+                else:
+
+                    # recursively call the same function on this element's direct child.
+                    #print("RELATION: {0}".format(relation))
+                    import_feature(list(child_element)[0], feature_type, last_id_inserted[feature_type], cur)
 
     return None
 
@@ -252,7 +428,12 @@ def process_geom(xml_geom):
     # get the epsg
     srid = xml_geom.attrib["srsName"][xml_geom.attrib["srsName"].find(":")+1:]
 
-    if xml_geom.tag[xml_geom.tag.find("}")+1:] == "LineString":
+    if xml_geom.tag[xml_geom.tag.find("}") + 1:] == "Point":
+
+        posList = list(xml_geom)[0].text.split(" ")
+        geom = "POINT Z (" + (posList[0] + " " + posList[1] + " " + posList[2]) + ")"
+
+    elif xml_geom.tag[xml_geom.tag.find("}")+1:] == "LineString":
 
         # get the posList child element and split it by spaces, then build it into a WKT string
         posList = list(xml_geom)[0].text.split(" ")
@@ -262,8 +443,6 @@ def process_geom(xml_geom):
             geom += (posList[0 + i] + " " + posList[1 + i] + " " + posList[2 + i] + ",")
             i += 3
         geom = geom[:-1] + ")"
-
-    # TODO: handle points (& polygons???)
 
     return [geom, srid]
 
@@ -279,7 +458,7 @@ def get_xlink(gmlid, cur):
 
     get_id_query = sql.SQL("""
     
-        SELECT id FROM citydb.cityobject WHERE gmlid = %(gmlid)s
+        SELECT id FROM citydb.utn9_feature_graph WHERE gmlid = %(gmlid)s
     
     """)
 
@@ -287,6 +466,24 @@ def get_xlink(gmlid, cur):
     target_id = cur.fetchone()[0]
 
     return target_id
+
+
+def link_network_feature_to_featuregraph(ntw_feature_id, featuregraph_id, cur):
+
+    link_query = sql.SQL("""
+    
+    UPDATE
+        citydb.utn9_feature_graph
+    SET
+        ntw_feature_id = %(ntw_feature_id)s
+    WHERE
+        id = %(featuregraph_id)s;
+    
+    """)
+
+    cur.execute(link_query, {"ntw_feature_id": ntw_feature_id, "featuregraph_id": featuregraph_id})
+
+    return None
 
 
 if __name__ == "__main__":
@@ -301,6 +498,6 @@ if __name__ == "__main__":
 
     network = citygml.find(".//utility:Network", ns)
 
-    import_feature(network, 0, cur)
+    import_feature(network, None, 0, cur)
 
     #conn.commit()

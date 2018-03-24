@@ -123,6 +123,11 @@ def import_Network(citygml, cur):
                     controllerdevice = network_component
                     import_ControllerDevice(controllerdevice, networkgraph, cur)
 
+                elif network_component.tag == '{http://www.citygml.org/ade/utility/0.9.2}StorageDevice':
+
+                    storagedevice = network_component
+                    import_StorageDevice(storagedevice, networkgraph, cur)
+
         # Iterate through the NetworkGraph element to get all of InterFeatureLinks
         for networkgraph_child in list(networkgraph):
 
@@ -850,6 +855,159 @@ def import_ControllerDevice(controllerdevice, networkgraph, cur):
                     );
 
                 """)
+
+        node_sql_dict["feat_graph_id"] = featuregraph_id
+        print(cur.mogrify(insert_node_sql, node_sql_dict))
+        cur.execute(insert_node_sql, node_sql_dict)
+        node_id_list.append(cur.fetchone()[0])
+
+
+def import_StorageDevice(storagedevice, networkgraph, cur):
+
+    storagedevice_sql_dict = {}
+    featuregraph_sql_dict = {}
+    node_sql_dict_list = []
+
+    storagedevice_gmlid = storagedevice.attrib['{http://www.opengis.net/gml}id']
+    storagedevice_sql_dict["gmlid"] = storagedevice_gmlid
+
+    storagedevice_gmlid = storagedevice.attrib['{http://www.opengis.net/gml}id']
+    storagedevice_sql_dict["gmlid"] = storagedevice_gmlid
+
+    for storagedevice_child in list(storagedevice):
+
+        if storagedevice_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry":
+
+            storagedevice_lod1Geometry = list(storagedevice_child)[0]
+            storagedevice_lineString = list(storagedevice_lod1Geometry)[0]
+            storagedevice_points = storagedevice_lineString.text.split(" ")
+
+            i = 0
+            storagedevice_geom = "POINT Z ("
+            while i <= len(storagedevice_points) - 3:
+                storagedevice_geom += (
+                    storagedevice_points[0 + i] + " " + storagedevice_points[1 + i] + " " +
+                    storagedevice_points[
+                        2 + i] + ",")
+                i += 3
+            storagedevice_geom = storagedevice_geom[:-1] + ")"
+            storagedevice_sql_dict['geom'] = storagedevice_geom
+
+        # ==========================================================================================================
+        # GET FEATUREGRAPH INFO
+        # ==========================================================================================================
+
+        elif storagedevice_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}topoGraph":
+
+            topograph = storagedevice_child.attrib['{http://www.w3.org/1999/xlink}href'][1:]
+            storagedevice_sql_dict['topoGraph'] = topograph
+
+            featuregraph = networkgraph.findall('.//utility:FeatureGraph[@gml:id="{0}"]'.format(topograph), ns)[0]
+
+            featuregraph_gmlid = featuregraph.attrib['{http://www.opengis.net/gml}id']
+            featuregraph_sql_dict["gmlid"] = featuregraph_gmlid
+
+            for featuregraph_child in list(featuregraph):
+
+                # ==================================================================================================
+                # GET NODE INFO
+                # ==================================================================================================
+
+                if featuregraph_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}nodeMember":
+
+                    nodemember = featuregraph_child
+                    node_sql_dict = {
+                        'gmlid': 'NULL',
+                        'type': 'NULL',
+                        'geom': 'NULL',
+                    }
+
+                    for nodemember_child in list(nodemember):
+
+                        node = nodemember_child
+                        node_gmlid = node.attrib['{http://www.opengis.net/gml}id']
+                        node_sql_dict['gmlid'] = node_gmlid
+
+                        for node_child in list(node):
+
+                            if node_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}type":
+
+                                node_type = node_child.text
+                                node_sql_dict['type'] = node_type
+
+                            elif node_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}realization":
+
+                                realization = node_child
+                                node_poslist = list(node_child)[0]
+                                point = list(node_poslist)[0].text  # nodes only have a single point as geometry
+                                node_geom = "POINT(" + point + ")"
+                                node_sql_dict['geom'] = node_geom
+
+                        node_sql_dict_list.append(node_sql_dict)
+                        node_sql_dict = node_sql_dict.copy()
+
+        else:
+
+            storagedevice_property = storagedevice_child.tag[
+                                        storagedevice_child.tag.find("}") + 1:]
+            storagedevice_sql_dict[storagedevice_property] = storagedevice_child.text
+
+    # ==============================================================================================================
+    # IMPORT CONTROLLERDEVICE
+    # ==============================================================================================================
+
+    # TODO: once buildings are added, need to get their id via the connectedCityObject property gml id
+    insert_storagedevice_sql = sql.SQL("""
+
+                    SELECT citydb_view.utn9_insert_ntw_feat_device_storage(
+                        gmlid := %(gmlid)s,
+                        class := %(class)s,
+                        status := %(status)s,
+                        geom := ST_GeomFromText(%(geom)s,26910)
+                    );
+
+                """)
+
+    print(cur.mogrify(insert_storagedevice_sql, storagedevice_sql_dict))
+    cur.execute(insert_storagedevice_sql, storagedevice_sql_dict)
+    storagedevice_id = cur.fetchone()[0]
+    print("I just inserted a storagedevice that got an id of {0}".format(storagedevice_id))
+
+    # ==============================================================================================================
+    # IMPORT FEATUREGRAPH
+    # ==============================================================================================================
+
+    insert_featuregraph_sql = sql.SQL("""
+
+                    SELECT citydb_view.utn9_insert_feature_graph(
+                        gmlid := %(gmlid)s,
+                        ntw_feature_id := %(ntw_feature_id)s
+                    );
+
+                """)
+
+    featuregraph_sql_dict['ntw_feature_id'] = int(storagedevice_id)
+    print(cur.mogrify(insert_featuregraph_sql, featuregraph_sql_dict))
+    cur.execute(insert_featuregraph_sql, featuregraph_sql_dict)
+    featuregraph_id = cur.fetchone()[0]
+    print("I just inserted a featuregraph that got an id of {0}".format(featuregraph_id))
+
+    # ==============================================================================================================
+    # IMPORT NODES
+    # ==============================================================================================================
+
+    node_id_list = []
+    for node_sql_dict in node_sql_dict_list:
+        insert_node_sql = sql.SQL("""
+
+                        SELECT citydb_view.utn9_insert_node(
+                            gmlid := %(gmlid)s,
+                            type := %(type)s,
+                            feat_graph_id := %(feat_graph_id)s,
+                            point_geom := ST_GeomFromText(%(geom)s,26910)
+                        );
+
+                    """)
 
         node_sql_dict["feat_graph_id"] = featuregraph_id
         print(cur.mogrify(insert_node_sql, node_sql_dict))

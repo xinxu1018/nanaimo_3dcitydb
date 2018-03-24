@@ -113,6 +113,16 @@ def import_Network(citygml, cur):
                     terminalelement = network_component
                     import_TerminalElement(terminalelement, networkgraph, cur)
 
+                elif network_component.tag == '{http://www.citygml.org/ade/utility/0.9.2}SimpleFunctionalElement':
+
+                    simplefunctionalelement = network_component
+                    import_SimpleFunctionalElement(simplefunctionalelement, networkgraph, cur)
+
+                elif network_component.tag == '{http://www.citygml.org/ade/utility/0.9.2}ControllerDevice':
+
+                    controllerdevice = network_component
+                    import_ControllerDevice(controllerdevice, networkgraph, cur)
+
         # Iterate through the NetworkGraph element to get all of InterFeatureLinks
         for networkgraph_child in list(networkgraph):
 
@@ -286,12 +296,6 @@ def import_RoundPipe(pipe, networkgraph, cur):
             # for node_sql_dict in node_sql_dict_list:
             #     for key in node_sql_dict:
             #         print("\t\t{0}: {1}".format(key, node_sql_dict[key]))
-            # print("\n")
-            #
-            # print("\t\tINTERIORFEATURELINK:")
-            # # for interiorfeaturelink_sql_dict in interiorfeaturelink_sql_dict_list:
-            # for key in interiorfeaturelink_sql_dict:
-            #     print("\t\t{0}: {1}".format(key, interiorfeaturelink_sql_dict[key]))
             # print("\n")
 
     # ==============================================================================================================
@@ -487,22 +491,6 @@ def import_TerminalElement(terminalelement, networkgraph, cur):
             terminalelement_property = terminalelement_child.tag[terminalelement_child.tag.find("}") + 1:]
             terminalelement_sql_dict[terminalelement_property] = terminalelement_child.text
 
-    # print("TERMINALELEMENT:")
-    # for key in terminalelement_sql_dict:
-    #     print("{0}: {1}".format(key, terminalelement_sql_dict[key]))
-    # print("\n")
-    #
-    # print("\tFEATUREGRAPH:")
-    # for key in featuregraph_sql_dict:
-    #     print("\t{0}: {1}".format(key, featuregraph_sql_dict[key]))
-    # print("\n")
-    #
-    # print("\t\tNODE:")
-    # for node_sql_dict in node_sql_dict_list:
-    #     for key in node_sql_dict:
-    #         print("\t\t{0}: {1}".format(key, node_sql_dict[key]))
-    # print("\n")
-
     # ==============================================================================================================
     # IMPORT TERMINALELEMENT
     # ==============================================================================================================
@@ -566,12 +554,316 @@ def import_TerminalElement(terminalelement, networkgraph, cur):
         node_id_list.append(cur.fetchone()[0])
 
 
+def import_SimpleFunctionalElement(simplefunctionalelement, networkgraph, cur):
+    
+    simplefunctionalelement_sql_dict = {}
+    featuregraph_sql_dict = {}
+    node_sql_dict_list = []
+
+    simplefunctionalelement_gmlid = simplefunctionalelement.attrib['{http://www.opengis.net/gml}id']
+    simplefunctionalelement_sql_dict["gmlid"] = simplefunctionalelement_gmlid
+
+    simplefunctionalelement_gmlid = simplefunctionalelement.attrib['{http://www.opengis.net/gml}id']
+    simplefunctionalelement_sql_dict["gmlid"] = simplefunctionalelement_gmlid
+
+    for simplefunctionalelement_child in list(simplefunctionalelement):
+
+        if simplefunctionalelement_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry":
+
+            simplefunctionalelement_lod1Geometry = list(simplefunctionalelement_child)[0]
+            simplefunctionalelement_lineString = list(simplefunctionalelement_lod1Geometry)[0]
+            simplefunctionalelement_points = simplefunctionalelement_lineString.text.split(" ")
+
+            i = 0
+            simplefunctionalelement_geom = "POINT Z ("
+            while i <= len(simplefunctionalelement_points) - 3:
+                simplefunctionalelement_geom += (
+                    simplefunctionalelement_points[0 + i] + " " + simplefunctionalelement_points[1 + i] + " " + simplefunctionalelement_points[
+                        2 + i] + ",")
+                i += 3
+            simplefunctionalelement_geom = simplefunctionalelement_geom[:-1] + ")"
+            simplefunctionalelement_sql_dict['geom'] = simplefunctionalelement_geom
+
+        # ==========================================================================================================
+        # GET FEATUREGRAPH INFO
+        # ==========================================================================================================
+
+        elif simplefunctionalelement_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}topoGraph":
+
+            topograph = simplefunctionalelement_child.attrib['{http://www.w3.org/1999/xlink}href'][1:]
+            simplefunctionalelement_sql_dict['topoGraph'] = topograph
+
+            featuregraph = networkgraph.findall('.//utility:FeatureGraph[@gml:id="{0}"]'.format(topograph), ns)[0]
+
+            featuregraph_gmlid = featuregraph.attrib['{http://www.opengis.net/gml}id']
+            featuregraph_sql_dict["gmlid"] = featuregraph_gmlid
+
+            for featuregraph_child in list(featuregraph):
+
+                # ==================================================================================================
+                # GET NODE INFO
+                # ==================================================================================================
+
+                if featuregraph_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}nodeMember":
+
+                    nodemember = featuregraph_child
+                    node_sql_dict = {
+                        'gmlid': 'NULL',
+                        'type': 'NULL',
+                        'geom': 'NULL',
+                    }
+
+                    for nodemember_child in list(nodemember):
+
+                        node = nodemember_child
+                        node_gmlid = node.attrib['{http://www.opengis.net/gml}id']
+                        node_sql_dict['gmlid'] = node_gmlid
+
+                        for node_child in list(node):
+
+                            if node_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}type":
+
+                                node_type = node_child.text
+                                node_sql_dict['type'] = node_type
+
+                            elif node_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}realization":
+
+                                realization = node_child
+                                node_poslist = list(node_child)[0]
+                                point = list(node_poslist)[0].text  # nodes only have a single point as geometry
+                                node_geom = "POINT(" + point + ")"
+                                node_sql_dict['geom'] = node_geom
+
+                        node_sql_dict_list.append(node_sql_dict)
+                        node_sql_dict = node_sql_dict.copy()
+
+        else:
+
+            simplefunctionalelement_property = simplefunctionalelement_child.tag[simplefunctionalelement_child.tag.find("}") + 1:]
+            simplefunctionalelement_sql_dict[simplefunctionalelement_property] = simplefunctionalelement_child.text
+
+    # ==============================================================================================================
+    # IMPORT SIMPLEFUNCTIONALELEMENT
+    # ==============================================================================================================
+
+    # TODO: once buildings are added, need to get their id via the connectedCityObject property gml id
+    insert_simplefunctionalelement_sql = sql.SQL("""
+
+            SELECT citydb_view.utn9_insert_ntw_feat_simple_funct_elem(
+                gmlid := %(gmlid)s,
+                status := %(status)s,
+                geom := ST_GeomFromText(%(geom)s,26910)
+            );
+
+        """)
+
+    print(cur.mogrify(insert_simplefunctionalelement_sql, simplefunctionalelement_sql_dict))
+    cur.execute(insert_simplefunctionalelement_sql, simplefunctionalelement_sql_dict)
+    simplefunctionalelement_id = cur.fetchone()[0]
+    print("I just inserted a simplefunctionalelement that got an id of {0}".format(simplefunctionalelement_id))
+
+    # ==============================================================================================================
+    # IMPORT FEATUREGRAPH
+    # ==============================================================================================================
+
+    insert_featuregraph_sql = sql.SQL("""
+
+            SELECT citydb_view.utn9_insert_feature_graph(
+                gmlid := %(gmlid)s,
+                ntw_feature_id := %(ntw_feature_id)s
+            );
+
+        """)
+
+    featuregraph_sql_dict['ntw_feature_id'] = int(simplefunctionalelement_id)
+    print(cur.mogrify(insert_featuregraph_sql, featuregraph_sql_dict))
+    cur.execute(insert_featuregraph_sql, featuregraph_sql_dict)
+    featuregraph_id = cur.fetchone()[0]
+    print("I just inserted a featuregraph that got an id of {0}".format(featuregraph_id))
+
+    # ==============================================================================================================
+    # IMPORT NODES
+    # ==============================================================================================================
+
+    node_id_list = []
+    for node_sql_dict in node_sql_dict_list:
+        insert_node_sql = sql.SQL("""
+
+                SELECT citydb_view.utn9_insert_node(
+                    gmlid := %(gmlid)s,
+                    type := %(type)s,
+                    feat_graph_id := %(feat_graph_id)s,
+                    point_geom := ST_GeomFromText(%(geom)s,26910)
+                );
+
+            """)
+
+        node_sql_dict["feat_graph_id"] = featuregraph_id
+        print(cur.mogrify(insert_node_sql, node_sql_dict))
+        cur.execute(insert_node_sql, node_sql_dict)
+        node_id_list.append(cur.fetchone()[0])
+
+
+def import_ControllerDevice(controllerdevice, networkgraph, cur):
+    
+    controllerdevice_sql_dict = {}
+    featuregraph_sql_dict = {}
+    node_sql_dict_list = []
+
+    controllerdevice_gmlid = controllerdevice.attrib['{http://www.opengis.net/gml}id']
+    controllerdevice_sql_dict["gmlid"] = controllerdevice_gmlid
+
+    controllerdevice_gmlid = controllerdevice.attrib['{http://www.opengis.net/gml}id']
+    controllerdevice_sql_dict["gmlid"] = controllerdevice_gmlid
+
+    for controllerdevice_child in list(controllerdevice):
+
+        if controllerdevice_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry":
+
+            controllerdevice_lod1Geometry = list(controllerdevice_child)[0]
+            controllerdevice_lineString = list(controllerdevice_lod1Geometry)[0]
+            controllerdevice_points = controllerdevice_lineString.text.split(" ")
+
+            i = 0
+            controllerdevice_geom = "POINT Z ("
+            while i <= len(controllerdevice_points) - 3:
+                controllerdevice_geom += (
+                    controllerdevice_points[0 + i] + " " + controllerdevice_points[1 + i] + " " +
+                    controllerdevice_points[
+                        2 + i] + ",")
+                i += 3
+            controllerdevice_geom = controllerdevice_geom[:-1] + ")"
+            controllerdevice_sql_dict['geom'] = controllerdevice_geom
+
+        # ==========================================================================================================
+        # GET FEATUREGRAPH INFO
+        # ==========================================================================================================
+
+        elif controllerdevice_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}topoGraph":
+
+            topograph = controllerdevice_child.attrib['{http://www.w3.org/1999/xlink}href'][1:]
+            controllerdevice_sql_dict['topoGraph'] = topograph
+
+            featuregraph = networkgraph.findall('.//utility:FeatureGraph[@gml:id="{0}"]'.format(topograph), ns)[0]
+
+            featuregraph_gmlid = featuregraph.attrib['{http://www.opengis.net/gml}id']
+            featuregraph_sql_dict["gmlid"] = featuregraph_gmlid
+
+            for featuregraph_child in list(featuregraph):
+
+                # ==================================================================================================
+                # GET NODE INFO
+                # ==================================================================================================
+
+                if featuregraph_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}nodeMember":
+
+                    nodemember = featuregraph_child
+                    node_sql_dict = {
+                        'gmlid': 'NULL',
+                        'type': 'NULL',
+                        'geom': 'NULL',
+                    }
+
+                    for nodemember_child in list(nodemember):
+
+                        node = nodemember_child
+                        node_gmlid = node.attrib['{http://www.opengis.net/gml}id']
+                        node_sql_dict['gmlid'] = node_gmlid
+
+                        for node_child in list(node):
+
+                            if node_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}type":
+
+                                node_type = node_child.text
+                                node_sql_dict['type'] = node_type
+
+                            elif node_child.tag == "{http://www.citygml.org/ade/utility/0.9.2}realization":
+
+                                realization = node_child
+                                node_poslist = list(node_child)[0]
+                                point = list(node_poslist)[0].text  # nodes only have a single point as geometry
+                                node_geom = "POINT(" + point + ")"
+                                node_sql_dict['geom'] = node_geom
+
+                        node_sql_dict_list.append(node_sql_dict)
+                        node_sql_dict = node_sql_dict.copy()
+
+        else:
+
+            controllerdevice_property = controllerdevice_child.tag[
+                                               controllerdevice_child.tag.find("}") + 1:]
+            controllerdevice_sql_dict[controllerdevice_property] = controllerdevice_child.text
+
+    # ==============================================================================================================
+    # IMPORT CONTROLLERDEVICE
+    # ==============================================================================================================
+
+    # TODO: once buildings are added, need to get their id via the connectedCityObject property gml id
+    insert_controllerdevice_sql = sql.SQL("""
+
+                SELECT citydb_view.utn9_insert_ntw_feat_device_controller(
+                    gmlid := %(gmlid)s,
+                    class := %(class)s,
+                    status := %(status)s,
+                    geom := ST_GeomFromText(%(geom)s,26910)
+                );
+
+            """)
+
+    print(cur.mogrify(insert_controllerdevice_sql, controllerdevice_sql_dict))
+    cur.execute(insert_controllerdevice_sql, controllerdevice_sql_dict)
+    controllerdevice_id = cur.fetchone()[0]
+    print("I just inserted a controllerdevice that got an id of {0}".format(controllerdevice_id))
+
+    # ==============================================================================================================
+    # IMPORT FEATUREGRAPH
+    # ==============================================================================================================
+
+    insert_featuregraph_sql = sql.SQL("""
+
+                SELECT citydb_view.utn9_insert_feature_graph(
+                    gmlid := %(gmlid)s,
+                    ntw_feature_id := %(ntw_feature_id)s
+                );
+
+            """)
+
+    featuregraph_sql_dict['ntw_feature_id'] = int(controllerdevice_id)
+    print(cur.mogrify(insert_featuregraph_sql, featuregraph_sql_dict))
+    cur.execute(insert_featuregraph_sql, featuregraph_sql_dict)
+    featuregraph_id = cur.fetchone()[0]
+    print("I just inserted a featuregraph that got an id of {0}".format(featuregraph_id))
+
+    # ==============================================================================================================
+    # IMPORT NODES
+    # ==============================================================================================================
+
+    node_id_list = []
+    for node_sql_dict in node_sql_dict_list:
+        insert_node_sql = sql.SQL("""
+
+                    SELECT citydb_view.utn9_insert_node(
+                        gmlid := %(gmlid)s,
+                        type := %(type)s,
+                        feat_graph_id := %(feat_graph_id)s,
+                        point_geom := ST_GeomFromText(%(geom)s,26910)
+                    );
+
+                """)
+
+        node_sql_dict["feat_graph_id"] = featuregraph_id
+        print(cur.mogrify(insert_node_sql, node_sql_dict))
+        cur.execute(insert_node_sql, node_sql_dict)
+        node_id_list.append(cur.fetchone()[0])
+
+
 def import_InterFeatureLink(interfeaturelink, cur):
 
     interfeaturelink_sql_dict = {}
 
     interfeaturelink_gmlid = interfeaturelink.attrib['{http://www.opengis.net/gml}id']
     interfeaturelink_sql_dict["gmlid"] = interfeaturelink_gmlid
+    print("attempting to import intefeaturelink #{0}".format(interfeaturelink_gmlid))
 
     for interfeaturelink_child in list(interfeaturelink):
 
@@ -619,9 +911,11 @@ def import_InterFeatureLink(interfeaturelink, cur):
     start_node_sql_dict = {"node_id": interfeaturelink_sql_dict["start_node"]}
     end_node_sql_dict = {"node_id": interfeaturelink_sql_dict["end_node"]}
 
+    print(cur.mogrify(node_id_query, end_node_sql_dict))
     cur.execute(node_id_query, start_node_sql_dict)
     interfeaturelink_sql_dict["start_node_id"] = cur.fetchone()[0]
 
+    print(cur.mogrify(node_id_query, end_node_sql_dict))
     cur.execute(node_id_query, end_node_sql_dict)
     interfeaturelink_sql_dict["end_node_id"] = cur.fetchone()[0]
 

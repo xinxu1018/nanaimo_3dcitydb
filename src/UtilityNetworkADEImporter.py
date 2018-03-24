@@ -5,7 +5,9 @@
 
 ALLOWED_RELATIONS = ["{http://www.citygml.org/ade/utility/0.9.2}component",
                      "{http://www.citygml.org/ade/utility/0.9.2}topoGraph",
-                     "{http://www.citygml.org/ade/utility/0.9.2}featureGraphMember",]
+                     "{http://www.citygml.org/ade/utility/0.9.2}featureGraphMember",
+                     "{http://www.citygml.org/ade/utility/0.9.2}nodeMember", 
+                     ]
 
 import xml.etree.ElementTree as ET
 import psycopg2
@@ -18,6 +20,8 @@ properties = {
     "Network": ["class", "function", "usage", ],
     "NetworkGraph": [],
     "FeatureGraph": [],
+    "InteriorFeatureLink": ["direction", "linkControl", ],
+    "Node": ["type", "connectionSignature", "linkControl"],
     "RoundPipe": ["function", "usage", "connectedCityObject", "yearOfConstruction", "status", "locationQuality",
                   "elevationQuality", "class", "functionOfLine", "isGravity", "exteriorWidth", "exteriorHeight",
                   "exteriorDiameter", "interiorDiameter", ],
@@ -28,7 +32,9 @@ properties = {
 relations = {
     "Network": ["component", "topoGraph", ],
     "NetworkGraph": ["featureGraphMember", "linkMember", ],
-    "FeatureGraph": ["linkMember", "networkLinkMember", "nodeMember", ],
+    "FeatureGraph": ["nodeMember", "linkMember", "networkLinkMember", ],
+    "Node": ["realiziation", ],
+    "InteriorFeatureLink": ["start", "end", "realization", ],
     "RoundPipe": ["lod1Geometry", "consistsOf", "hasMaterial", "topoGraph", ],
     "TerminalElement": ["lod1Geometry", ]
 }
@@ -84,6 +90,24 @@ queries = {
             ntw_graph_id := %(ntw_graph_id)s,
             schema_name := %(schema_name)s
         );
+    """),
+    "Node": sql.SQL("""
+        SELECT citydb_view.utn9_insert_node(
+            id := %(id)s,
+            gmlid := %(gmlid)s,
+            gmlid_codespace := %(gmlid_codespace)s,
+            name := %(name)s,
+            name_codespace := %(name_codespace)s,
+            description := %(description)s,
+            type := %(type)s,
+            connection_signature := %(connectionSignature)s,
+            link_control := %(linkControl)s,
+            feat_graph_id := %(feat_graph_id)s,
+            point_geom := ST_GeomFromText(%(geom)s, %(srid)s)
+        )
+    """),
+    "InteriorFeatureLink": sql.SQL("""
+        
     """),
     "RoundPipe": sql.SQL("""
         WITH rp AS (
@@ -245,6 +269,20 @@ exec_dicts = {
         "ntw_graph_id": None,
         "schema_name": "citydb"
     },
+    "Node": {
+        "id": None,
+        "gmlid": None,
+        "gmlid_codespace": None,
+        "name": None,
+        "name_codespace": None,
+        "description": None,
+        "type": None,
+        "connectionSignature": None,
+        "linkControl": None,
+        "feat_graph_id": None,
+        "srid": None,
+        "geom": None
+    },
     "RoundPipe": {
         "id": None,
         "gmlid": None,
@@ -333,6 +371,7 @@ superordinate_ids = {
     "Network": None,
     "NetworkGraph": "network_id",
     "FeatureGraph": "ntw_graph_id",
+    "Node": "feat_graph_id",
     "RoundPipe": "network_id",
     "TerminalElement": "network_id",
 }
@@ -359,7 +398,7 @@ def import_feature(xml_element, last_feature_type_inserted, superordinate_id, cu
 
     # find the geometry relation - it is a special case because it is a relation that doesn't specifically relate to
     # another city object.
-    for child_element in [child_element for child_element in list(xml_element) if child_element.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry"]:
+    for child_element in [child_element for child_element in list(xml_element) if child_element.tag == "{http://www.citygml.org/ade/utility/0.9.2}lod1Geometry" or child_element.tag == "{http://www.citygml.org/ade/utility/0.9.2}realization"]:
         geom_epsg = process_geom(child_element[0])
         exec_dict["geom"] = geom_epsg[0]
         exec_dict["srid"] = int(geom_epsg[1])
@@ -500,4 +539,4 @@ if __name__ == "__main__":
 
     import_feature(network, None, 0, cur)
 
-    #conn.commit()
+    conn.commit()

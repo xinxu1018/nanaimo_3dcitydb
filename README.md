@@ -16,7 +16,7 @@ Installation guides for all of these software packages can be found at their res
 
 To load the water network into the database, perform the following steps:
 
-1. Open the file `nanaimo_to_citydb.py` and replace the `host`, `dbname`, `user` and `password` parameters with those of your database.
+1. Open the file [nanaimo_to_citydb.py](https://github.com/iboates/nanaimo_3dcitydb) and replace the `host`, `dbname`, `user` and `password` parameters with those of your database.
 2. Run this script using Python 3.
 
 ## Visualising the Data
@@ -34,8 +34,28 @@ Once you have connected to the PostGIS database, the following tables will be of
 * `citydb_view.utn9_link_interfeature.geom` - The realization of the topological links of the water pipe feature graphs to the terminal element feature graphs.
 * `citydb_view.utn9_node.geom` - The realization of the topological nodes from the water pipe feature graphs, as well as the feature graphs of the simple functional elements, terminal elements, storage devices, and controller devices.
 
+## Performing Routing Analysis
+
+To perform the routing analysis functions mentioned in the aforementioned paper, simply execute the contents of the files found in the `sql` folder as a query on your database.
+
+Note that changing an element's `status` attribute to `outOfService` will disallow routing through that feature, which can be used to cut off features that are beyond that element. This will result in different values for all of the following analyses. This is best exemplified in the following figure:
+
+![](https://i.imgur.com/8AIXM6E.png)
+
+The available analyses are:
+
+* [network_volume.sql](https://github.com/iboates/nanaimo_3dcitydb/blob/master/sql/network_volume.sql) - Calculate the volume of all the pipes that are reachable from the *Reservoir* element.
+* [reservoir_to_houses.sql](https://github.com/iboates/nanaimo_3dcitydb/blob/master/sql/reservoir_to_houses.sql) - Find the topological routes of all the terminal elements that are reachable from the *Reservoir* element.
+* [stress_calc.sql](https://github.com/iboates/nanaimo_3dcitydb/blob/master/sql/stress_calc.sql) - Find the topological routes of all the terminal elements that are reachable from the *Reservoir* element, and then create a table where each link counts the number of traversals it has experienced.
+
+The results of "reservoir_to_houses.sql" and "stress_calc.sql" should appear like this: (when styled appropriately)
+
+![](https://imgur.com/MUijIuk.png)
+![](https://imgur.com/BvZ6o5D.png)
+
 ## External Links
 
-Some other links that may be of interest that are related to this paper are:
+Some other links that may be of interest that are related to this work are:
 
-* The UtilityNetwork ADE repository - The official source for the UtilityNetwork ADE data model for CityGML.
+* [The UtilityNetwork ADE Repository](https://github.com/TatjanaKutzner/CityGML-UtilityNetwork-ADE) - The official source for the UtilityNetwork ADE data model for CityGML.
+* [Nanaimo Water Network Data Sample Respository](https://github.com/iboates/CityGML-UtilityNetwork-ADE-Nanaimo-Water-Network-Sample) - The [FME](https://www.safe.com/) workbench used to create the CityGML data sample being loaded into the database.

@@ -8,8 +8,8 @@ CREATE TABLE public.nanaimo_routing AS (
 		l.gmlid,
 		l.start_node_id,
 		l.end_node_id,
-		1 AS cost,
-		1 AS reverse_cost,
+		ST_Length(l.line_geom) AS cost,
+		ST_Length(l.line_geom) AS reverse_cost,
 		l.line_geom AS geom
 	FROM
 		citydb.objectclass AS oc,
@@ -22,8 +22,9 @@ CREATE TABLE public.nanaimo_routing AS (
 DROP TABLE IF EXISTS public.nanaimo_network_volume;
 
 CREATE TABLE public.nanaimo_network_volume AS (
-	SELECT
+	SELECT DISTINCT ON (l.id)
 		l.id AS id,
+		l.feat_graph_id,
 		rp.ext_diameter AS diameter,
 		l.line_geom AS geom
 	FROM
@@ -34,8 +35,8 @@ CREATE TABLE public.nanaimo_network_volume AS (
 				id,
 				start_node_id AS source,
 				end_node_id AS target,
-				cost,
-				reverse_cost
+				0 AS cost,
+				0 AS reverse_cost
 			FROM
 				public.nanaimo_routing
 
@@ -76,13 +77,18 @@ CREATE TABLE public.nanaimo_network_volume AS (
 				n.feat_graph_id = fg.id AND fg.ntw_feature_id = sd.id),
 
 			/* MAX "DISTANCE" */
-			100
+			'Infinity'
 			
 		) AS sr,
 		citydb.utn9_link AS l,
+		citydb.utn9_feature_graph AS fg,
 		citydb_view.utn9_ntw_feat_distrib_elem_pipe_round AS rp
 	WHERE
 		l.id = sr.edge
+ 		AND
+ 		l.feat_graph_id = fg.id
+		AND
+		fg.ntw_feature_id = rp.id
 		AND
 		rp.ext_diameter != 0
 );

@@ -1,6 +1,6 @@
 # Nanaimo Water Network Sample for the UtilityNetwork ADE Extension for 3DCityDB.
 
-Welcome to the repository for the Nanaimo Water Network Sample for the UtilityNetwork ADE Extension for 3DCityDB. This repository contains a CityGML (+ UtilityNetwork ADE) file containing water pipes and other appurtenances in Nanaimo, British Columbia, Canada. It also contains Python scripts for loading this data into a PostgreSQL-based 3DCityDB instance with the extended schema for UtilityNetwork ADE. This repository has been assembled to compliment the paper **"Network Modelling and Semantic 3D City Models: How Mature is the UtiityNetwork ADE? A Test Case Based on a Water Network"**, to be published in **JOURNAL NAME HERE**.
+Welcome to the repository for the Nanaimo Water Network Sample for the UtilityNetwork ADE Extension for 3DCityDB. This repository contains a CityGML (+ UtilityNetwork ADE) file containing water pipes and other appurtenances in Nanaimo, British Columbia, Canada. It also contains Python scripts for loading this data into a PostgreSQL-based 3DCityDB instance with the extended schema for UtilityNetwork ADE. This repository has been assembled to compliment the paper **"Network Modelling and Semantic 3D City Models: How Mature is the UtiityNetwork ADE? A Test Case Based on a Water Network"**, which has been presented at the GeoDelft 2018 conference in Delft, NL.
 
 ## Required Software
 

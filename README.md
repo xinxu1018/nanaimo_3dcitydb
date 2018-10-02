@@ -16,8 +16,9 @@ Installation guides for all of these software packages can be found at their res
 
 To load the water network into the database, perform the following steps:
 
-1. Open the file [nanaimo_to_citydb.py](https://github.com/iboates/nanaimo_3dcitydb/blob/master/nanaimo_to_3dcitydb.py) and replace the `host`, `dbname`, `user` and `password` parameters on line 8 with those of your database.
-2. Run this script using Python 3.
+1. Open the 3DCityDB Importer / Exporter tool (see point #3 above) and load the file [data/ 	nanaimo_water_network.gml](https://github.com/iboates/nanaimo_3dcitydb/blob/master/data/nanaimo_water_network.gml) into the database, make sure that it will import both `Building` and `CityFurniture` elements.
+2. Open the file [nanaimo_to_citydb.py](https://github.com/iboates/nanaimo_3dcitydb/blob/master/nanaimo_to_3dcitydb.py) and replace the `host`, `dbname`, `user` and `password` parameters on line 8 with those of your database.
+3. Run this script using Python 3.
 
 *Note: If at any time you wish to purge the database of all records, execute on your database the following SQL command:
 
